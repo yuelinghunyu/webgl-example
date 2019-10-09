@@ -1,4 +1,5 @@
 window.onload = function () {
+  let squareRotation = 0.0
   const canvas = document.querySelector("#glcanvas")
   const gl = canvas.getContext("webgl")
 
@@ -10,19 +11,25 @@ window.onload = function () {
   // 顶点着色器
   const vsSource = `
     attribute vec4 aVertexPosition;
+    attribute vec4 aVertexColor;
 
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
 
-    void main() {
+    varying lowp vec4 vColor;
+
+    void main(void) {
       gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
+      vColor = aVertexColor;
     }
   `
 
   // 片元着色器
   const fsSource = `
-    void main() {
-      gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+    varying lowp vec4 vColor;
+
+    void main(void) {
+      gl_FragColor = vColor;
     }
   `
   const shaderProgram = initShaderProgram(gl, vsSource, fsSource)
@@ -30,7 +37,8 @@ window.onload = function () {
   const programInfo = {
     program: shaderProgram,
     attribLocations: {
-      vertexPoistion: gl.getAttribLocation(shaderProgram, 'aVertexPosition')
+      vertexPoistion: gl.getAttribLocation(shaderProgram, 'aVertexPosition'),
+      vertexColor: gl.getAttribLocation(shaderProgram, 'aVertexColor')
     },
     uniformLocations: {
       projectionMatrix: gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
@@ -40,7 +48,20 @@ window.onload = function () {
 
   const buffers = initBuffers(gl)
 
-  drawScene(gl, programInfo, buffers)
+  let then = 0
+
+  function render(now) {
+    now *= 0.001
+    const deltaTime = now - then
+    then = now
+    drawScene(gl, programInfo, buffers, deltaTime)
+
+    requestAnimationFrame(render)
+  }
+
+  requestAnimationFrame(render)
+
+  
   // 初始化着色器程序，让webgl知道如何绘制我们的数据
 
   function initShaderProgram(gl, vsSource, fsSource) {
@@ -94,13 +115,27 @@ window.onload = function () {
       gl.STATIC_DRAW
     )
     
+    // 添加颜色buffer
+    const colorBuffer = gl.createBuffer()
+    
+    const colors = [
+      1.0, 1.0, 1.0, 1.0,
+      1.0, 0.0, 0.0, 1.0,
+      0.0, 1.0, 0.0, 1.0,
+      0.0, 0.0, 1.0, 1.0
+    ]
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer)
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW)
+
     return {
-      position: positionBuffer
+      position: positionBuffer,
+      color: colorBuffer
     }
   }
 
   // 画场景
-  function drawScene(gl, programInfo, buffers) {
+  function drawScene(gl, programInfo, buffers, deltaTime) {
     gl.clearColor(0.0, 0.0, 0.0, 1.0);  // Clear to black, fully opaque
     gl.clearDepth(1.0);                 // Clear everything
     gl.enable(gl.DEPTH_TEST);           // Enable depth testing
@@ -138,10 +173,18 @@ window.onload = function () {
     // Now move the drawing position a bit to where we want to
     // start drawing the square.
   
-    mat4.translate(modelViewMatrix,     // destination matrix
-                   modelViewMatrix,     // matrix to translate
-                   [-0.0, 0.0, -6.0]);  // amount to translate
+    mat4.translate(
+      modelViewMatrix,     // destination matrix
+      modelViewMatrix,     // matrix to translate
+      [-0.0, 0.0, -6.0]
+    );  // amount to translate
   
+    mat4.rotate(
+      modelViewMatrix,
+      modelViewMatrix,
+      squareRotation,
+      [0, 0, 1]
+    )
     // Tell WebGL how to pull out the positions from the position
     // buffer into the vertexPosition attribute.
     {
@@ -151,7 +194,9 @@ window.onload = function () {
       const stride = 0;         // how many bytes to get from one set of values to the next
                                 // 0 = use type and numComponents above
       const offset = 0;         // how many bytes inside the buffer to start from
+
       gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
+
       gl.vertexAttribPointer(
           programInfo.attribLocations.vertexPosition,
           numComponents,
@@ -159,10 +204,28 @@ window.onload = function () {
           normalize,
           stride,
           offset);
-      gl.enableVertexAttribArray(
-          programInfo.attribLocations.vertexPosition);
+        
+      gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition)
     }
-  
+    
+    {
+      const numComponents = 4
+      const type = gl.FLOAT
+      const normalize = false
+      const stride = 0
+      const offset = 0
+      gl.bindBuffer(gl.ARRAY_BUFFER, buffers.color)
+      gl.vertexAttribPointer(
+        programInfo.attribLocations.vertexColor,
+        numComponents,
+        type,
+        normalize,
+        stride,
+        offset
+      )
+      gl.enableVertexAttribArray(programInfo.attribLocations.vertexColor)
+    }
+
     // Tell WebGL to use our program when drawing
   
     gl.useProgram(programInfo.program);
@@ -183,6 +246,9 @@ window.onload = function () {
       const vertexCount = 4;
       gl.drawArrays(gl.TRIANGLE_STRIP, offset, vertexCount);
     }
+
+
+    squareRotation += deltaTime
   }
 
 }
